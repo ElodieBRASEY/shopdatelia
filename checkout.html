@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Datelia – Démarrer l’essai</title>
+  <title>Datelia – Paiement (CB enregistrée)</title>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif;margin:0;padding:24px;background:#fafafa;}
     .card{max-width:520px;margin:32px auto;padding:24px;background:#fff;border:1px solid #eee;border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
@@ -16,20 +16,21 @@
 </head>
 <body>
   <div class="card">
-    <h1>Démarrer mon essai gratuit (14 jours)</h1>
+    <h1>Paiement — démarrer l’essai (14 jours)</h1>
     <form action="/api/create-checkout-session-direct" method="get">
-      <label>Email</label>
+      <label>Email (utilisé pour Stripe)</label>
       <input name="email" type="email" required placeholder="vous@entreprise.com" />
 
-      <label>Taille d’équipe (utilisateurs)</label>
+      <label>Nombre d’utilisateurs (équipe)</label>
       <input name="team_size" type="number" min="1" value="1" />
 
       <label>Documents / mois (estimation)</label>
       <input name="docs_per_month" type="number" min="0" value="0" />
 
-      <button type="submit">Commencer mon essai gratuit</button>
-      <div class="hint">Aucun débit maintenant — carte enregistrée uniquement.</div>
+      <button type="submit">Aller au paiement sécurisé</button>
+      <div class="hint">Aucun débit maintenant — la carte est simplement enregistrée (mode setup). Les 14 jours commencent après l’onboarding.</div>
     </form>
   </div>
 </body>
 </html>
+
