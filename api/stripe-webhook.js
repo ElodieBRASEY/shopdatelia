@@ -20,6 +20,13 @@ export default async function handler(req, res) {
   const sig = req.headers['stripe-signature'];
   let event;
 
+  // 🔎 petit log de diagnostic (visible dans Vercel → Logs)
+  console.log('diag:webhook', {
+    hasSigHeader: !!sig,
+    envIsLive: (process.env.STRIPE_SECRET_KEY || '').startsWith('sk_live_'),
+    hasWebhookSecret: !!process.env.STRIPE_WEBHOOK_SECRET,
+  });
+
   try {
     event = stripe.webhooks.constructEvent(buf, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
