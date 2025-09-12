@@ -5,10 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Datelia – Paiement (essai 14 jours)</title>
   <style>
-    :root {
-      --bg:#fafafa; --card:#fff; --ink:#111; --sub:#666; --muted:#9aa0a6; --line:#eee;
-      --accent:#111; --radius:14px;
-    }
+    :root { --bg:#fafafa; --card:#fff; --ink:#111; --sub:#666; --muted:#9aa0a6; --line:#eee; --accent:#111; --radius:14px; }
     *{box-sizing:border-box}
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif;background:var(--bg);color:var(--ink);margin:0;padding:24px}
     .wrap{max-width:980px;margin:0 auto;display:grid;gap:20px;grid-template-columns:1.1fr .9fr}
@@ -18,12 +15,9 @@
     h1{font-size:22px;margin:0 0 12px}
     h2{font-size:16px;margin:0 0 10px}
     label{display:block;font-size:14px;margin:12px 0 6px}
-    input,button{font-size:15px}
-    input[type="email"],input[type="number"]{
-      width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:10px;outline:none;
-    }
-    input[type="number"]::-webkit-outer-spin-button,
-    input[type="number"]::-webkit-inner-spin-button{appearance:none;margin:0}
+    input,button,select{font-size:15px}
+    input[type="email"],input[type="number"],select{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:10px;outline:none}
+    input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-inner-spin-button{appearance:none;margin:0}
     .hint{font-size:12px;color:var(--sub);margin-top:8px}
     .cta{width:100%;padding:14px;border:0;border-radius:12px;background:var(--accent);color:#fff;cursor:pointer}
     .cta[disabled]{opacity:.6;cursor:not-allowed}
@@ -36,6 +30,7 @@
     .total .now{font-weight:600}
     .total .later{font-size:14px;color:var(--sub)}
     .badge{display:inline-block;padding:4px 8px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--sub)}
+    .taxnote{font-size:12px;color:var(--sub);margin-top:6px}
   </style>
 </head>
 <body>
@@ -51,11 +46,16 @@
         <div class="row">
           <div>
             <label>Nombre d’utilisateurs</label>
-            <input id="team" name="team_size" type="number" min="1" value="1" />
+            <input id="team" name="team_size" type="number" min="1" value="1" required />
           </div>
           <div>
-            <label>Documents / mois (estimation)</label>
-            <input id="docs" name="docs_per_month" type="number" min="0" value="0" />
+            <label>Pack (obligatoire)</label>
+            <select id="pack" name="pack" required>
+              <option value="" selected disabled>Choisir un pack…</option>
+              <option value="essentiel">Pack Essentiel (inclus)</option>
+              <option value="pro">Pack Pro (+30 € / utilisateur)</option>
+              <option value="entreprise">Pack Entreprise (+80 € / utilisateur)</option>
+            </select>
           </div>
         </div>
 
@@ -76,19 +76,23 @@
       </div>
 
       <div class="summary">
-        <div class="line"><span>Utilisateurs</span><span id="usersLine">—</span></div>
-        <div class="line"><span>Documents (paliers de 100)</span><span id="docsLine">—</span></div>
+        <div class="line"><span>Utilisateurs (HT)</span><span id="usersLine">—</span></div>
+        <div class="line"><span>Pack (HT)</span><span id="packLine">—</span></div>
+
         <div class="divider"></div>
-        <div class="line muted"><span>TVA</span><span>Calculée à la facturation</span></div>
+        <div class="line"><span>Total <b>HT</b></span><span id="totalHT">—</span></div>
+        <div class="line"><span>TVA (20%)</span><span id="vat">—</span></div>
         <div class="divider"></div>
+
         <div class="total">
           <div>
             <div class="now">Aujourd’hui : 0 €</div>
-            <div class="later" id="laterText">Puis —/mois après 14 jours</div>
+            <div class="later" id="laterText">Puis —/mois TTC après 14 jours</div>
+            <div class="taxnote">* Montants affichés **HT** et **TTC** (TVA 20%).</div>
           </div>
           <div style="text-align:right">
-            <div style="font-size:24px;font-weight:700" id="totalMonth">—</div>
-            <div class="later">Total mensuel</div>
+            <div style="font-size:24px;font-weight:700" id="totalTTC">—</div>
+            <div class="later">Total mensuel TTC</div>
           </div>
         </div>
       </div>
@@ -97,63 +101,85 @@
 
 <script>
 (() => {
-  // Prix (EUR HT)
-  const PRICE_USER = 90;
-  const DOCS_STEP = 100;
-  const PRICE_DOCS_STEP = 100;
+  // --- Prix HT ---
+  const PRICE_FIRST_49_PER_USER = 90;  // 1..49
+  const PRICE_FROM_50_PER_USER  = 20;  // 50+
+  const PACK_SURCHARGE = {             // par utilisateur
+    essentiel: 0,
+    pro: 30,
+    entreprise: 80
+  };
+  const VAT_RATE = 0.20;
 
   const fmt = (n) => new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR' }).format(n);
 
+  // DOM
   const $email = document.getElementById('email');
   const $team = document.getElementById('team');
-  const $docs = document.getElementById('docs');
+  const $pack = document.getElementById('pack');
   const $usersLine = document.getElementById('usersLine');
-  const $docsLine = document.getElementById('docsLine');
-  const $totalMonth = document.getElementById('totalMonth');
+  const $packLine = document.getElementById('packLine');
+  const $totalHT = document.getElementById('totalHT');
+  const $vat = document.getElementById('vat');
+  const $totalTTC = document.getElementById('totalTTC');
   const $laterText = document.getElementById('laterText');
   const $form = document.getElementById('form');
   const $btn = document.getElementById('payBtn');
 
   function clampInputs() {
     const t = Math.max(1, parseInt($team.value || '1', 10));
-    let d = Math.max(0, parseInt($docs.value || '0', 10));
     $team.value = t;
-    $docs.value = d;
-    return { team: t, docs: d };
+    return { team: t };
+  }
+
+  function usersCostHT(team) {
+    const first = Math.min(team, 49);
+    const rest  = Math.max(team - 49, 0);
+    const cost  = first * PRICE_FIRST_49_PER_USER + rest * PRICE_FROM_50_PER_USER;
+    const txt   = rest > 0
+      ? `${first} × ${fmt(PRICE_FIRST_49_PER_USER)} + ${rest} × ${fmt(PRICE_FROM_50_PER_USER)} = ${fmt(cost)}`
+      : `${first} × ${fmt(PRICE_FIRST_49_PER_USER)} = ${fmt(cost)}`;
+    return { cost, txt };
+  }
+
+  function packCostHT(team, packKey) {
+    const add = PACK_SURCHARGE[packKey] ?? 0;
+    return { cost: team * add, txt: `${team} × ${fmt(add)} = ${fmt(team * add)}` };
   }
 
   function updateSummary() {
-    const { team, docs } = clampInputs();
-    const docsQty = Math.ceil(docs / DOCS_STEP); // 0,1,2...
-    const usersCost = team * PRICE_USER;
-    const docsCost = docsQty * PRICE_DOCS_STEP;
-    const total = usersCost + docsCost;
+    const { team } = clampInputs();
+    const packKey = $pack.value || null;
 
-    $usersLine.textContent = `${team} × ${fmt(PRICE_USER)} = ${fmt(usersCost)}`;
-    $docsLine.textContent  = `${docsQty} × ${fmt(PRICE_DOCS_STEP)} = ${fmt(docsCost)}`;
+    const { cost: usersCost, txt: usersTxt } = usersCostHT(team);
+    const { cost: packCost,  txt: packTxt  } = packKey ? packCostHT(team, packKey) : { cost:0, txt:'—' };
 
-    $totalMonth.textContent = fmt(total);
-    $laterText.textContent  = `Puis ${fmt(total)}/mois après 14 jours`;
+    const totalHT = usersCost + packCost;
+    const vat     = totalHT * VAT_RATE;
+    const totalTTC= totalHT + vat;
+
+    $usersLine.textContent = usersTxt;
+    $packLine.textContent  = packTxt;
+
+    $totalHT.textContent = fmt(totalHT);
+    $vat.textContent     = fmt(vat);
+    $totalTTC.textContent= fmt(totalTTC);
+    $laterText.textContent = `Puis ${fmt(totalTTC)}/mois TTC après 14 jours`;
   }
 
-  // init + live update
   ['input','change'].forEach(evt => {
     $team.addEventListener(evt, updateSummary);
-    $docs.addEventListener(evt, updateSummary);
+    $pack.addEventListener(evt, updateSummary);
   });
   updateSummary();
 
-  // validation douce au submit
   $form.addEventListener('submit', (e) => {
-    const { team, docs } = clampInputs();
-    if (!$email.value || !/.+@.+\..+/.test($email.value)) {
-      e.preventDefault();
-      alert('Merci d’indiquer un email valide.');
-      $email.focus();
-      return;
-    }
-    // Rien à faire : la <form> en GET appelle /api/create-checkout-session-direct
-    // qui redirige vers Stripe Checkout.
+    const { team } = clampInputs();
+    if (!$email.value || !/.+@.+\..+/.test($email.value)) { e.preventDefault(); alert('Merci d’indiquer un email valide.'); $email.focus(); return; }
+    if (!$pack.value) { e.preventDefault(); alert('Merci de sélectionner un pack.'); $pack.focus(); return; }
+    if (team < 1) { e.preventDefault(); alert('Au moins 1 utilisateur.'); $team.focus(); return; }
+
+    // submit GET -> /api/create-checkout-session-direct (redirige Stripe)
     $btn.disabled = true;
     $btn.textContent = 'Redirection vers Stripe…';
   });
