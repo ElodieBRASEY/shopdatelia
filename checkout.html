@@ -3,34 +3,161 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Datelia – Paiement (CB enregistrée)</title>
+  <title>Datelia – Paiement (essai 14 jours)</title>
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif;margin:0;padding:24px;background:#fafafa;}
-    .card{max-width:520px;margin:32px auto;padding:24px;background:#fff;border:1px solid #eee;border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-    h1{font-size:20px;margin:0 0 16px}
+    :root {
+      --bg:#fafafa; --card:#fff; --ink:#111; --sub:#666; --muted:#9aa0a6; --line:#eee;
+      --accent:#111; --radius:14px;
+    }
+    *{box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif;background:var(--bg);color:var(--ink);margin:0;padding:24px}
+    .wrap{max-width:980px;margin:0 auto;display:grid;gap:20px;grid-template-columns:1.1fr .9fr}
+    @media (max-width:900px){.wrap{grid-template-columns:1fr}}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+    .pad{padding:22px}
+    h1{font-size:22px;margin:0 0 12px}
+    h2{font-size:16px;margin:0 0 10px}
     label{display:block;font-size:14px;margin:12px 0 6px}
-    input{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px}
-    button{width:100%;margin-top:16px;padding:12px 14px;border:0;border-radius:10px;font-size:15px;cursor:pointer;background:#111;color:#fff}
-    .hint{font-size:12px;color:#666;margin-top:8px}
+    input,button{font-size:15px}
+    input[type="email"],input[type="number"]{
+      width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:10px;outline:none;
+    }
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button{appearance:none;margin:0}
+    .hint{font-size:12px;color:var(--sub);margin-top:8px}
+    .cta{width:100%;padding:14px;border:0;border-radius:12px;background:var(--accent);color:#fff;cursor:pointer}
+    .cta[disabled]{opacity:.6;cursor:not-allowed}
+    .row{display:flex;gap:12px}
+    .row > div{flex:1}
+    .summary .line{display:flex;justify-content:space-between;margin:8px 0;font-size:14px}
+    .summary .muted{color:var(--muted)}
+    .divider{height:1px;background:var(--line);margin:12px 0}
+    .total{display:flex;justify-content:space-between;align-items:center}
+    .total .now{font-weight:600}
+    .total .later{font-size:14px;color:var(--sub)}
+    .badge{display:inline-block;padding:4px 8px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--sub)}
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>Paiement — démarrer l’essai (14 jours)</h1>
-    <form action="/api/create-checkout-session-direct" method="get">
-      <label>Email (utilisé pour Stripe)</label>
-      <input name="email" type="email" required placeholder="vous@entreprise.com" />
+  <div class="wrap">
+    <!-- Colonne gauche : saisie -->
+    <div class="card">
+      <form id="form" class="pad" action="/api/create-checkout-session-direct" method="get">
+        <h1>Paiement — démarrer l’essai (14 jours)</h1>
 
-      <label>Nombre d’utilisateurs (équipe)</label>
-      <input name="team_size" type="number" min="1" value="1" />
+        <label>Email (utilisé pour Stripe)</label>
+        <input id="email" name="email" type="email" required placeholder="vous@entreprise.com" />
 
-      <label>Documents / mois (estimation)</label>
-      <input name="docs_per_month" type="number" min="0" value="0" />
+        <div class="row">
+          <div>
+            <label>Nombre d’utilisateurs</label>
+            <input id="team" name="team_size" type="number" min="1" value="1" />
+          </div>
+          <div>
+            <label>Documents / mois (estimation)</label>
+            <input id="docs" name="docs_per_month" type="number" min="0" value="0" />
+          </div>
+        </div>
 
-      <button type="submit">Aller au paiement sécurisé</button>
-      <div class="hint">Aucun débit maintenant — la carte est simplement enregistrée (mode setup). Les 14 jours commencent après l’onboarding.</div>
-    </form>
+        <p class="hint">
+          Aucun débit aujourd’hui — la carte est simplement enregistrée (SCA incluse si nécessaire).
+          Les 14 jours commencent après votre rendez-vous d’onboarding.
+        </p>
+
+        <button id="payBtn" class="cta" type="submit">Aller au paiement sécurisé</button>
+      </form>
+    </div>
+
+    <!-- Colonne droite : récap & prix dynamique -->
+    <div class="card pad">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <h2>Récapitulatif</h2>
+        <span class="badge">0 € aujourd’hui</span>
+      </div>
+
+      <div class="summary">
+        <div class="line"><span>Utilisateurs</span><span id="usersLine">—</span></div>
+        <div class="line"><span>Documents (paliers de 100)</span><span id="docsLine">—</span></div>
+        <div class="divider"></div>
+        <div class="line muted"><span>TVA</span><span>Calculée à la facturation</span></div>
+        <div class="divider"></div>
+        <div class="total">
+          <div>
+            <div class="now">Aujourd’hui : 0 €</div>
+            <div class="later" id="laterText">Puis —/mois après 14 jours</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:24px;font-weight:700" id="totalMonth">—</div>
+            <div class="later">Total mensuel</div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
+
+<script>
+(() => {
+  // Prix (EUR HT)
+  const PRICE_USER = 90;
+  const DOCS_STEP = 100;
+  const PRICE_DOCS_STEP = 100;
+
+  const fmt = (n) => new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR' }).format(n);
+
+  const $email = document.getElementById('email');
+  const $team = document.getElementById('team');
+  const $docs = document.getElementById('docs');
+  const $usersLine = document.getElementById('usersLine');
+  const $docsLine = document.getElementById('docsLine');
+  const $totalMonth = document.getElementById('totalMonth');
+  const $laterText = document.getElementById('laterText');
+  const $form = document.getElementById('form');
+  const $btn = document.getElementById('payBtn');
+
+  function clampInputs() {
+    const t = Math.max(1, parseInt($team.value || '1', 10));
+    let d = Math.max(0, parseInt($docs.value || '0', 10));
+    $team.value = t;
+    $docs.value = d;
+    return { team: t, docs: d };
+  }
+
+  function updateSummary() {
+    const { team, docs } = clampInputs();
+    const docsQty = Math.ceil(docs / DOCS_STEP); // 0,1,2...
+    const usersCost = team * PRICE_USER;
+    const docsCost = docsQty * PRICE_DOCS_STEP;
+    const total = usersCost + docsCost;
+
+    $usersLine.textContent = `${team} × ${fmt(PRICE_USER)} = ${fmt(usersCost)}`;
+    $docsLine.textContent  = `${docsQty} × ${fmt(PRICE_DOCS_STEP)} = ${fmt(docsCost)}`;
+
+    $totalMonth.textContent = fmt(total);
+    $laterText.textContent  = `Puis ${fmt(total)}/mois après 14 jours`;
+  }
+
+  // init + live update
+  ['input','change'].forEach(evt => {
+    $team.addEventListener(evt, updateSummary);
+    $docs.addEventListener(evt, updateSummary);
+  });
+  updateSummary();
+
+  // validation douce au submit
+  $form.addEventListener('submit', (e) => {
+    const { team, docs } = clampInputs();
+    if (!$email.value || !/.+@.+\..+/.test($email.value)) {
+      e.preventDefault();
+      alert('Merci d’indiquer un email valide.');
+      $email.focus();
+      return;
+    }
+    // Rien à faire : la <form> en GET appelle /api/create-checkout-session-direct
+    // qui redirige vers Stripe Checkout.
+    $btn.disabled = true;
+    $btn.textContent = 'Redirection vers Stripe…';
+  });
+})();
+</script>
 </body>
 </html>
-
