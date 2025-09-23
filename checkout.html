@@ -85,6 +85,7 @@
       <div class="summary">
         <div class="line"><span>Utilisateurs (HT)</span><span id="usersLine">—</span></div>
         <div class="line"><span>Pack (HT)</span><span id="packLine">—</span></div>
+        <div class="line"><span>Remise (HT)</span><span id="discountLine">—</span></div>
         <div class="divider"></div>
 
         <div style="display:flex;justify-content:space-between;align-items:flex-end">
@@ -108,6 +109,8 @@
 
 <script>
 (() => {
+  let currentDiscount = { type: null, value: 0 }; // {type:'percent'|'amount', value:number}
+const € = (n) => new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR' }).format(n);
   // --- Barème HT ---
   const PRICE_FIRST_49_PER_USER = 90;  // 1..49
   const PRICE_FROM_50_PER_USER  = 20;  // 50+
@@ -156,21 +159,30 @@
   }
 
   function updateSummary() {
-    const team = clampTeam();
-    const packKey = $pack.value || null;
+  const team = clampTeam();
+  const packKey = $pack.value || null;
 
-    const { cost: usersCost, txt: usersTxt } = usersCostHT(team);
-    const { cost: packCost,  txt: packTxt  } = packKey ? packCostHT(team, packKey) : { cost:0, txt:'—' };
+  const { cost: usersCost, txt: usersTxt } = usersCostHT(team);
+  const { cost: packCost,  txt: packTxt  } = packKey ? packCostHT(team, packKey) : { cost:0, txt:'—' };
 
-    const totalHT  = usersCost + packCost;
-    const totalTTC = totalHT * (1 + VAT_RATE);
+  let subtotalHT = usersCost + packCost;
 
-    $usersLine.textContent = usersTxt;
-    $packLine.textContent  = packTxt;
-    $totalHTBig.textContent = fmt(totalHT);
-    $ttcLine.textContent = `Estimation TTC (20%) : ${fmt(totalTTC)} / mois`;
-    $laterText.textContent = `${fmt(totalHT)} / mois HT`;
-  }
+  // Remise
+  let discountHT = 0;
+  if (currentDiscount.type === 'percent') discountHT = subtotalHT * (currentDiscount.value / 100);
+  if (currentDiscount.type === 'amount')  discountHT = currentDiscount.value; // attention: devise EUR supposée
+
+  const totalHT  = Math.max(0, subtotalHT - discountHT);
+  const totalTTC = totalHT * (1 + VAT_RATE);
+
+  $usersLine.textContent = usersTxt;
+  $packLine.textContent  = packTxt;
+  $discountLine.textContent = discountHT > 0 ? '− ' + €(discountHT) : '—';
+  $totalHTBig.textContent = €(totalHT);
+  $ttcLine.textContent = `Estimation TTC (20%) : ${€(totalTTC)} / mois`;
+  $laterText.textContent = `${€(totalHT)} / mois HT`;
+}
+
 
   ['input','change'].forEach(evt => {
     $team.addEventListener(evt, updateSummary);
