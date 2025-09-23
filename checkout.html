@@ -284,8 +284,6 @@
         const data = await resp.json().catch(() => ({}));
 
         if (resp.ok && (data.ok || data.url || data.id)) {
-          if (data.url) window.open(data.url, '_blank');       // page publique si dispo
-          if (data.dashboardUrl) window.open(data.dashboardUrl, '_blank'); // page Dashboard devis
           window.location.href = 'https://www.datelia.ai/merci';
           return;
         }
