@@ -59,34 +59,15 @@
           </div>
         </div>
 
-    <label>Code promo (optionnel)</label>
-<div class="row">
-  <div>
-    <input id="promo" name="promo_code" type="text" placeholder="DATELIA25" />
-  </div>
-  <div style="flex:0 0 140px">
-    <button id="applyPromoBtn" type="button" class="cta secondary" style="width:100%">Appliquer</button>
-  </div>
-</div>
-const $applyPromoBtn = document.getElementById('applyPromoBtn');
-async function refreshPromo() {
-  const code = ($promo.value || '').trim();
-  currentDiscount = { type: null, value: 0 };
-  if (!code) { updateSummary(); return; }
-
-  try {
-    const r = await fetch(`/api/promo-lookup?code=${encodeURIComponent(code)}`);
-    const data = await r.json().catch(() => ({}));
-    if (r.ok && data.ok && data.found && data.coupon) {
-      if (data.coupon.percent_off != null) currentDiscount = { type:'percent', value:data.coupon.percent_off };
-      else if (data.coupon.amount_off != null) currentDiscount = { type:'amount', value:(data.coupon.amount_off/100) };
-    }
-  } catch {}
-  updateSummary();
-}
-$applyPromoBtn.addEventListener('click', refreshPromo);
-
-
+        <label>Code promo (optionnel)</label>
+        <div class="row">
+          <div>
+            <input id="promo" name="promo_code" type="text" placeholder="DATELIA25" />
+          </div>
+          <div style="flex:0 0 140px">
+            <button id="applyPromoBtn" type="button" class="cta secondary" style="width:100%">Appliquer</button>
+          </div>
+        </div>
 
         <p class="hint">
           Aucun débit aujourd’hui — la carte est enregistrée (SCA incluse si nécessaire).
@@ -132,135 +113,160 @@ $applyPromoBtn.addEventListener('click', refreshPromo);
     </div>
   </div>
 
-<script>
-(() => {
-  // ===== Config prix (HT) =====
-  const PRICE_FIRST_49_PER_USER = 90;  // 1..49
-  const PRICE_FROM_50_PER_USER  = 20;  // 50+
-  const PACK_SURCHARGE = { essentiel: 0, pro: 30, entreprise: 80 }; // €/utilisateur
-  const VAT_RATE = 0.20;
+  <script>
+  (() => {
+    // ===== Config prix (HT) =====
+    const PRICE_FIRST_49_PER_USER = 90;  // 1..49
+    const PRICE_FROM_50_PER_USER  = 20;  // 50+
+    const PACK_SURCHARGE = { essentiel: 0, pro: 30, entreprise: 80 }; // €/utilisateur
+    const VAT_RATE = 0.20;
 
-  // ===== Helpers / DOM =====
-  const money = (n) => new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR' }).format(n);
+    // ===== Helpers / DOM =====
+    const money = (n) => new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR' }).format(n);
 
-  const $email = document.getElementById('email');
-  const $team = document.getElementById('team');
-  const $pack = document.getElementById('pack');
-  const $promo = document.getElementById('promo');
+    const $email = document.getElementById('email');
+    const $team = document.getElementById('team');
+    const $pack = document.getElementById('pack');
+    const $promo = document.getElementById('promo');
 
-  const $usersLine = document.getElementById('usersLine');
-  const $packLine = document.getElementById('packLine');
-  const $discountLine = document.getElementById('discountLine');
-  const $totalHTBig = document.getElementById('totalHTBig');
-  const $ttcLine = document.getElementById('ttcLine');
-  const $laterText = document.getElementById('laterText');
+    const $usersLine = document.getElementById('usersLine');
+    const $packLine = document.getElementById('packLine');
+    const $discountLine = document.getElementById('discountLine');
+    const $totalHTBig = document.getElementById('totalHTBig');
+    const $ttcLine = document.getElementById('ttcLine');
+    const $laterText = document.getElementById('laterText');
 
-  const $form = document.getElementById('form');
-  const $payBtn = document.getElementById('payBtn');
-  const $quoteBtn = document.getElementById('quoteBtn');
+    const $form = document.getElementById('form');
+    const $payBtn = document.getElementById('payBtn');
+    const $quoteBtn = document.getElementById('quoteBtn');
+    const $applyPromoBtn = document.getElementById('applyPromoBtn');
 
-  // État de la promo pour l’aperçu (pas obligatoire)
-  let currentDiscount = { type: null, value: 0 }; // {type:'percent'|'amount', value:number}
+    // État de la promo (pour le récap à droite)
+    let currentDiscount = { type: null, value: 0 }; // {type:'percent'|'amount', value:number}
 
-  function clampTeam() {
-    const t = Math.max(1, parseInt($team.value || '1', 10));
-    $team.value = t;
-    return t;
-  }
-
-  function usersCostHT(team) {
-    const first = Math.min(team, 49);
-    const rest  = Math.max(team - 49, 0);
-    const cost  = first * PRICE_FIRST_49_PER_USER + rest * PRICE_FROM_50_PER_USER;
-    const txt   = rest > 0
-      ? `${first} × ${money(PRICE_FIRST_49_PER_USER)} + ${rest} × ${money(PRICE_FROM_50_PER_USER)} = ${money(cost)}`
-      : `${first} × ${money(PRICE_FIRST_49_PER_USER)} = ${money(cost)}`;
-    return { cost, txt };
-  }
-
-  function packCostHT(team, packKey) {
-    const add = PACK_SURCHARGE[packKey] ?? 0;
-    return { cost: team * add, txt: `${team} × ${money(add)} = ${money(team * add)}` };
-  }
-
-  function updateSummary() {
-    const team = clampTeam();
-    const packKey = $pack.value || null;
-
-    const { cost: usersCost, txt: usersTxt } = usersCostHT(team);
-    const { cost: packCost,  txt: packTxt  } = packKey ? packCostHT(team, packKey) : { cost:0, txt:'—' };
-
-    let subtotalHT = usersCost + packCost;
-
-    // Remise d’aperçu (pas obligatoire)
-    let discountHT = 0;
-    if (currentDiscount.type === 'percent') discountHT = subtotalHT * (currentDiscount.value / 100);
-    if (currentDiscount.type === 'amount')  discountHT = currentDiscount.value; // en €
-
-    const totalHT  = Math.max(0, subtotalHT - discountHT);
-    const totalTTC = totalHT * (1 + VAT_RATE);
-
-    $usersLine.textContent = usersTxt;
-    $packLine.textContent  = packTxt;
-    $discountLine.textContent = discountHT > 0 ? '− ' + money(discountHT) : '—';
-    $totalHTBig.textContent = money(totalHT);
-    $ttcLine.textContent = `Estimation TTC (20%) : ${money(totalTTC)} / mois`;
-    $laterText.textContent = `${money(totalHT)} / mois HT`;
-  }
-
-  // Listeners UI
-  ['input','change'].forEach(evt => {
-    $team.addEventListener(evt, updateSummary);
-    $pack.addEventListener(evt, updateSummary);
-  });
-  updateSummary();
-
-  // Soumission CB (setup) → GET vers /api/create-checkout-session-direct
-  $form.addEventListener('submit', (e) => {
-    const team = clampTeam();
-    if (!$email.value || !/.+@.+\..+/.test($email.value)) { e.preventDefault(); alert('Merci d’indiquer un email valide.'); $email.focus(); return; }
-    if (!$pack.value) { e.preventDefault(); alert('Merci de sélectionner un pack.'); $pack.focus(); return; }
-    if (team < 1) { e.preventDefault(); alert('Au moins 1 utilisateur.'); $team.focus(); return; }
-    $payBtn.disabled = true;
-    $payBtn.textContent = 'Redirection vers Stripe…';
-  });
-
-  // Bouton "Devis (sans CB)" → POST /api/create-quote
- $quoteBtn.addEventListener('click', async () => {
-  const email = $email.value;
-  const team = clampTeam();
-  const pack = $pack.value;
-  const promo = ($promo.value || '').trim();
-
-  if (!/.+@.+\..+/.test(email)) { alert('Email invalide'); return; }
-  if (!pack) { alert('Merci de sélectionner un pack'); return; }
-
-  const oldLabel = $quoteBtn.textContent;
-  $quoteBtn.disabled = true;
-  $quoteBtn.textContent = 'Création du devis…';
-
-  try {
-    const resp = await fetch('/api/create-quote', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, team_size: team, pack, promo_code: promo || undefined })
-    });
-    const data = await resp.json().catch(() => ({}));
-
-    if (resp.ok && data.ok) {
-      if (data.url) window.open(data.url, '_blank'); // ouvre la page publique si dispo
-      // on redirige de toute façon vers "merci" pour le rdv d’onboarding
-      window.location.href = 'https://www.datelia.ai/merci';
-      return;
+    function clampTeam() {
+      const t = Math.max(1, parseInt($team.value || '1', 10));
+      $team.value = t;
+      return t;
     }
-    alert('Impossible de créer le devis : ' + (data.error || `HTTP ${resp.status}`));
-  } catch (err) {
-    alert('Impossible de créer le devis : ' + err.message);
-  } finally {
-    $quoteBtn.disabled = false;
-    $quoteBtn.textContent = oldLabel;
-  });
-})();
-</script>
+
+    function usersCostHT(team) {
+      const first = Math.min(team, 49);
+      const rest  = Math.max(team - 49, 0);
+      const cost  = first * PRICE_FIRST_49_PER_USER + rest * PRICE_FROM_50_PER_USER;
+      const txt   = rest > 0
+        ? `${first} × ${money(PRICE_FIRST_49_PER_USER)} + ${rest} × ${money(PRICE_FROM_50_PER_USER)} = ${money(cost)}`
+        : `${first} × ${money(PRICE_FIRST_49_PER_USER)} = ${money(cost)}`;
+      return { cost, txt };
+    }
+
+    function packCostHT(team, packKey) {
+      const add = PACK_SURCHARGE[packKey] ?? 0;
+      return { cost: team * add, txt: `${team} × ${money(add)} = ${money(team * add)}` };
+    }
+
+    function updateSummary() {
+      const team = clampTeam();
+      const packKey = $pack.value || null;
+
+      const { cost: usersCost, txt: usersTxt } = usersCostHT(team);
+      const { cost: packCost,  txt: packTxt  } = packKey ? packCostHT(team, packKey) : { cost:0, txt:'—' };
+
+      let subtotalHT = usersCost + packCost;
+
+      // Remise d’aperçu
+      let discountHT = 0;
+      if (currentDiscount.type === 'percent') discountHT = subtotalHT * (currentDiscount.value / 100);
+      if (currentDiscount.type === 'amount')  discountHT = currentDiscount.value; // en €
+
+      const totalHT  = Math.max(0, subtotalHT - discountHT);
+      const totalTTC = totalHT * (1 + VAT_RATE);
+
+      $usersLine.textContent = usersTxt;
+      $packLine.textContent  = packTxt;
+      $discountLine.textContent = discountHT > 0 ? '− ' + money(discountHT) : '—';
+      $totalHTBig.textContent = money(totalHT);
+      $ttcLine.textContent = `Estimation TTC (20%) : ${money(totalTTC)} / mois`;
+      $laterText.textContent = `${money(totalHT)} / mois HT`;
+    }
+
+    // Vérifier/apply le code promo côté serveur puis recalculer
+    async function refreshPromo() {
+      const code = ($promo.value || '').trim();
+      currentDiscount = { type: null, value: 0 };
+      if (!code) { updateSummary(); return; }
+
+      try {
+        const r = await fetch(`/api/promo-lookup?code=${encodeURIComponent(code)}`);
+        const data = await r.json().catch(() => ({}));
+        if (r.ok && data.ok && data.found && data.coupon) {
+          if (data.coupon.percent_off != null) currentDiscount = { type:'percent', value:data.coupon.percent_off };
+          else if (data.coupon.amount_off != null) currentDiscount = { type:'amount', value:(data.coupon.amount_off/100) };
+        } else {
+          // code inconnu => aucune remise
+          currentDiscount = { type:null, value:0 };
+        }
+      } catch {
+        currentDiscount = { type:null, value:0 };
+      }
+      updateSummary();
+    }
+
+    // Listeners UI
+    ['input','change'].forEach(evt => {
+      $team.addEventListener(evt, updateSummary);
+      $pack.addEventListener(evt, updateSummary);
+    });
+    $applyPromoBtn.addEventListener('click', refreshPromo);
+
+    updateSummary();
+
+    // Soumission CB (setup) → GET vers /api/create-checkout-session-direct
+    $form.addEventListener('submit', (e) => {
+      const team = clampTeam();
+      if (!$email.value || !/.+@.+\..+/.test($email.value)) { e.preventDefault(); alert('Merci d’indiquer un email valide.'); $email.focus(); return; }
+      if (!$pack.value) { e.preventDefault(); alert('Merci de sélectionner un pack.'); $pack.focus(); return; }
+      if (team < 1) { e.preventDefault(); alert('Au moins 1 utilisateur.'); $team.focus(); return; }
+      $payBtn.disabled = true;
+      $payBtn.textContent = 'Redirection vers Stripe…';
+    });
+
+    // Devis (sans CB) → POST /api/create-quote
+    $quoteBtn.addEventListener('click', async () => {
+      const email = $email.value;
+      const team = clampTeam();
+      const pack = $pack.value;
+      const promo = ($promo.value || '').trim();
+
+      if (!/.+@.+\..+/.test(email)) { alert('Email invalide'); return; }
+      if (!pack) { alert('Merci de sélectionner un pack'); return; }
+
+      const oldLabel = $quoteBtn.textContent;
+      $quoteBtn.disabled = true;
+      $quoteBtn.textContent = 'Création du devis…';
+
+      try {
+        const resp = await fetch('/api/create-quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, team_size: team, pack, promo_code: promo || undefined })
+        });
+        const data = await resp.json().catch(() => ({}));
+
+        if (resp.ok && (data.ok || data.url || data.id)) {
+          if (data.url) window.open(data.url, '_blank'); // page publique si dispo
+          window.location.href = 'https://www.datelia.ai/merci';
+          return;
+        }
+        alert('Impossible de créer le devis : ' + (data.error || `HTTP ${resp.status}`));
+      } catch (err) {
+        alert('Impossible de créer le devis : ' + err.message);
+      } finally {
+        $quoteBtn.disabled = false;
+        $quoteBtn.textContent = oldLabel;
+      }
+    });
+  })();
+  </script>
 </body>
 </html>
