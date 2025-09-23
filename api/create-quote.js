@@ -26,7 +26,7 @@ export default async function handler(req, res) {
 
     // 3) Lignes = tes PRICES Stripe
     const items = [
-      { price: process.env.PRICE_ID_SEAT_TIERED, quantity: team } // tiered 90/20
+      { price: process.env.PRICE_ID_USERS, quantity: team } // tiered 90/20
     ];
     if (packKey === 'essentiel' && process.env.PRICE_ID_PACK_ESSENTIEL) {
       items.push({ price: process.env.PRICE_ID_PACK_ESSENTIEL, quantity: team });
