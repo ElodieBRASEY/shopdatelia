@@ -200,41 +200,39 @@
   });
 
   // Bouton "Devis (sans CB)" → POST /api/create-quote
-  $quoteBtn.addEventListener('click', async () => {
-    const email = $email.value;
-    const team = clampTeam();
-    const pack = $pack.value;
-    const promo = ($promo.value || '').trim();
+ $quoteBtn.addEventListener('click', async () => {
+  const email = $email.value;
+  const team = clampTeam();
+  const pack = $pack.value;
+  const promo = ($promo.value || '').trim();
 
-    if (!/.+@.+\..+/.test(email)) { alert('Email invalide'); return; }
-    if (!pack) { alert('Merci de sélectionner un pack'); return; }
+  if (!/.+@.+\..+/.test(email)) { alert('Email invalide'); return; }
+  if (!pack) { alert('Merci de sélectionner un pack'); return; }
 
-    const oldLabel = $quoteBtn.textContent;
-    $quoteBtn.disabled = true;
-    $quoteBtn.textContent = 'Création du devis…';
+  const oldLabel = $quoteBtn.textContent;
+  $quoteBtn.disabled = true;
+  $quoteBtn.textContent = 'Création du devis…';
 
-    try {
-      const resp = await fetch('/api/create-quote', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, team_size: team, pack, promo_code: promo || undefined })
-      });
-      const data = await resp.json().catch(() => ({}));
+  try {
+    const resp = await fetch('/api/create-quote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, team_size: team, pack, promo_code: promo || undefined })
+    });
+    const data = await resp.json().catch(() => ({}));
 
-      if (resp.ok && data.url) {
-        // 1) ouvrir le devis Stripe dans un nouvel onglet
-        window.open(data.url, '_blank');
-        // 2) rediriger l’onglet courant vers la page "merci" (Calendly)
-        window.location.href = 'https://www.datelia.ai/merci';
-        return;
-      }
-      alert('Impossible de créer le devis : ' + (data.error || `HTTP ${resp.status}`));
-    } catch (err) {
-      alert('Impossible de créer le devis : ' + err.message);
-    } finally {
-      $quoteBtn.disabled = false;
-      $quoteBtn.textContent = oldLabel;
+    if (resp.ok && data.ok) {
+      if (data.url) window.open(data.url, '_blank'); // ouvre la page publique si dispo
+      // on redirige de toute façon vers "merci" pour le rdv d’onboarding
+      window.location.href = 'https://www.datelia.ai/merci';
+      return;
     }
+    alert('Impossible de créer le devis : ' + (data.error || `HTTP ${resp.status}`));
+  } catch (err) {
+    alert('Impossible de créer le devis : ' + err.message);
+  } finally {
+    $quoteBtn.disabled = false;
+    $quoteBtn.textContent = oldLabel;
   });
 })();
 </script>
