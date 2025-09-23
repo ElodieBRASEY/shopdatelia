@@ -20,25 +20,26 @@
     input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-inner-spin-button{appearance:none;margin:0}
     .hint{font-size:12px;color:var(--sub);margin-top:8px}
     .cta{width:100%;padding:14px;border:0;border-radius:12px;background:var(--accent);color:#fff;cursor:pointer}
+    .cta.secondary{background:#2d2d2d}
     .cta[disabled]{opacity:.6;cursor:not-allowed}
     .row{display:flex;gap:12px}
     .row > div{flex:1}
     .summary .line{display:flex;justify-content:space-between;margin:8px 0;font-size:14px}
     .summary .muted{color:var(--muted)}
     .divider{height:1px;background:var(--line);margin:12px 0}
-    .total{display:flex;justify-content:space-between;align-items:center}
-    .total .now{font-weight:600}
-    .total .later{font-size:14px;color:var(--sub)}
     .badge{display:inline-block;padding:4px 8px;border:1px solid var(--line);border-radius:999px;font-size:12px;color:var(--sub)}
-    .taxnote{font-size:12px;color:var(--sub);margin-top:6px}
+    .total-ht{font-size:28px;font-weight:800}
+    .ttc-line{font-size:13px;color:var(--sub); margin-top:6px; text-align:right}
+    .footnote{font-size:12px;color:var(--sub)}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <!-- Colonne gauche : saisie -->
+    <!-- Colonne gauche : formulaire -->
     <div class="card">
+      <!-- IMPORTANT: method="get" pour envoyer promo_code/pack/team/email à /api/create-checkout-session-direct -->
       <form id="form" class="pad" action="/api/create-checkout-session-direct" method="get">
-        <h1>Paiement — démarrer l’essai (14 jours)</h1>
+        <h1>Démarrer l’essai (14 jours)</h1>
 
         <label>Email (utilisé pour Stripe)</label>
         <input id="email" name="email" type="email" required placeholder="vous@entreprise.com" />
@@ -59,16 +60,22 @@
           </div>
         </div>
 
+        <label>Code promo (optionnel)</label>
+        <input id="promo" name="promo_code" type="text" placeholder="DATELIA25" />
+
         <p class="hint">
-          Aucun débit aujourd’hui — la carte est simplement enregistrée (SCA incluse si nécessaire).
+          Aucun débit aujourd’hui — la carte est enregistrée (SCA incluse si nécessaire).
           Les 14 jours commencent après votre rendez-vous d’onboarding.
         </p>
 
         <button id="payBtn" class="cta" type="submit">Aller au paiement sécurisé</button>
+        <button id="quoteBtn" type="button" class="cta secondary" style="margin-top:10px;">
+          Demander un devis (sans CB)
+        </button>
       </form>
     </div>
 
-    <!-- Colonne droite : récap & prix dynamique -->
+    <!-- Colonne droite : récap -->
     <div class="card pad">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <h2>Récapitulatif</h2>
@@ -78,30 +85,30 @@
       <div class="summary">
         <div class="line"><span>Utilisateurs (HT)</span><span id="usersLine">—</span></div>
         <div class="line"><span>Pack (HT)</span><span id="packLine">—</span></div>
-
-        <div class="divider"></div>
-        <div class="line"><span>Total <b>HT</b></span><span id="totalHT">—</span></div>
-        <div class="line"><span>TVA (20%)</span><span id="vat">—</span></div>
         <div class="divider"></div>
 
-        <div class="total">
-          <div>
-            <div class="now">Aujourd’hui : 0 €</div>
-            <div class="later" id="laterText">Puis —/mois TTC après 14 jours</div>
-            <div class="taxnote">* Montants affichés **HT** et **TTC** (TVA 20%).</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end">
+          <div class="footnote">
+            Les montants sont affichés en <b>HT</b>.<br />
+            Le TTC (TVA 20%) est indiqué à titre informatif.
           </div>
           <div style="text-align:right">
-            <div style="font-size:24px;font-weight:700" id="totalTTC">—</div>
-            <div class="later">Total mensuel TTC</div>
+            <div>Total mensuel <b>HT</b></div>
+            <div class="total-ht" id="totalHTBig">—</div>
+            <div class="ttc-line" id="ttcLine">Estimation TTC (20%) : — / mois</div>
           </div>
         </div>
+
+        <div class="divider"></div>
+        <div class="line muted"><span>Aujourd’hui</span><span>0 €</span></div>
+        <div class="line"><span>Après 14 jours</span><span id="laterText">— / mois HT</span></div>
       </div>
     </div>
   </div>
 
 <script>
 (() => {
-  // --- Prix HT ---
+  // --- Barème HT ---
   const PRICE_FIRST_49_PER_USER = 90;  // 1..49
   const PRICE_FROM_50_PER_USER  = 20;  // 50+
   const PACK_SURCHARGE = {             // par utilisateur
@@ -117,19 +124,20 @@
   const $email = document.getElementById('email');
   const $team = document.getElementById('team');
   const $pack = document.getElementById('pack');
+  const $promo = document.getElementById('promo');
   const $usersLine = document.getElementById('usersLine');
   const $packLine = document.getElementById('packLine');
-  const $totalHT = document.getElementById('totalHT');
-  const $vat = document.getElementById('vat');
-  const $totalTTC = document.getElementById('totalTTC');
+  const $totalHTBig = document.getElementById('totalHTBig');
+  const $ttcLine = document.getElementById('ttcLine');
   const $laterText = document.getElementById('laterText');
   const $form = document.getElementById('form');
-  const $btn = document.getElementById('payBtn');
+  const $payBtn = document.getElementById('payBtn');
+  const $quoteBtn = document.getElementById('quoteBtn');
 
-  function clampInputs() {
+  function clampTeam() {
     const t = Math.max(1, parseInt($team.value || '1', 10));
     $team.value = t;
-    return { team: t };
+    return t;
   }
 
   function usersCostHT(team) {
@@ -148,23 +156,20 @@
   }
 
   function updateSummary() {
-    const { team } = clampInputs();
+    const team = clampTeam();
     const packKey = $pack.value || null;
 
     const { cost: usersCost, txt: usersTxt } = usersCostHT(team);
     const { cost: packCost,  txt: packTxt  } = packKey ? packCostHT(team, packKey) : { cost:0, txt:'—' };
 
-    const totalHT = usersCost + packCost;
-    const vat     = totalHT * VAT_RATE;
-    const totalTTC= totalHT + vat;
+    const totalHT  = usersCost + packCost;
+    const totalTTC = totalHT * (1 + VAT_RATE);
 
     $usersLine.textContent = usersTxt;
     $packLine.textContent  = packTxt;
-
-    $totalHT.textContent = fmt(totalHT);
-    $vat.textContent     = fmt(vat);
-    $totalTTC.textContent= fmt(totalTTC);
-    $laterText.textContent = `Puis ${fmt(totalTTC)}/mois TTC après 14 jours`;
+    $totalHTBig.textContent = fmt(totalHT);
+    $ttcLine.textContent = `Estimation TTC (20%) : ${fmt(totalTTC)} / mois`;
+    $laterText.textContent = `${fmt(totalHT)} / mois HT`;
   }
 
   ['input','change'].forEach(evt => {
@@ -173,15 +178,44 @@
   });
   updateSummary();
 
+  // Submit CB (setup) -> en GET vers /api/create-checkout-session-direct (inclut promo_code)
   $form.addEventListener('submit', (e) => {
-    const { team } = clampInputs();
+    const team = clampTeam();
     if (!$email.value || !/.+@.+\..+/.test($email.value)) { e.preventDefault(); alert('Merci d’indiquer un email valide.'); $email.focus(); return; }
     if (!$pack.value) { e.preventDefault(); alert('Merci de sélectionner un pack.'); $pack.focus(); return; }
     if (team < 1) { e.preventDefault(); alert('Au moins 1 utilisateur.'); $team.focus(); return; }
+    $payBtn.disabled = true;
+    $payBtn.textContent = 'Redirection vers Stripe…';
+  });
 
-    // submit GET -> /api/create-checkout-session-direct (redirige Stripe)
-    $btn.disabled = true;
-    $btn.textContent = 'Redirection vers Stripe…';
+  // Bouton "Devis (sans CB)" -> POST /api/create-quote
+  $quoteBtn.addEventListener('click', async () => {
+    const email = $email.value;
+    const team = clampTeam();
+    const pack = $pack.value;
+    const promo = ($promo.value || '').trim();
+
+    if (!/.+@.+\..+/.test(email)) { alert('Email invalide'); return; }
+    if (!pack) { alert('Merci de sélectionner un pack'); return; }
+
+    try {
+      $quoteBtn.disabled = true; $quoteBtn.textContent = 'Création du devis…';
+      const resp = await fetch('/api/create-quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, team_size: team, pack, promo_code: promo || undefined })
+      });
+      const data = await resp.json();
+      if (resp.ok && data.url) {
+        window.location.href = data.url; // redirection vers la page devis Stripe
+      } else {
+        alert('Impossible de créer le devis : ' + (data.error || 'inconnu'));
+        $quoteBtn.disabled = false; $quoteBtn.textContent = 'Demander un devis (sans CB)';
+      }
+    } catch (err) {
+      alert('Erreur réseau: ' + err.message);
+      $quoteBtn.disabled = false; $quoteBtn.textContent = 'Demander un devis (sans CB)';
+    }
   });
 })();
 </script>
