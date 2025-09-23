@@ -10,23 +10,23 @@ export default async function handler(req, res) {
     const team = Math.max(1, parseInt(team_size || '1', 10));
     const packKey = (pack || 'essentiel').toLowerCase();
 
-    // 1) Créer / retrouver le client
+    // 1) Client (retrouver ou créer)
     let customer = (await stripe.customers.list({ email, limit: 1 })).data[0];
     if (!customer) customer = await stripe.customers.create({ email });
 
-    // 2) Mémoriser les choix côté Customer
+    // 2) Mémoriser les choix sur le Customer
     await stripe.customers.update(customer.id, {
       metadata: {
         pack: packKey,
         team_size: String(team),
-        last_quote_promo: promo_code || ''
+        promo_code: promo_code || ''
       },
-      description: `Choix devis: pack=${packKey}, users=${team}`
+      description: `Choix devis: pack=${packKey}, users=${team}, promo=${promo_code || '-'}`
     });
 
-    // 3) Lignes = tes PRICES Stripe
+    // 3) Lignes du devis = tes PRICES Stripe
     const items = [
-      { price: process.env.PRICE_ID_USERS, quantity: team } // tiered 90/20
+      { price: process.env.PRICE_ID_USERS, quantity: team } // tiering 90/20 géré par Stripe
     ];
     if (packKey === 'essentiel' && process.env.PRICE_ID_PACK_ESSENTIEL) {
       items.push({ price: process.env.PRICE_ID_PACK_ESSENTIEL, quantity: team });
@@ -38,11 +38,11 @@ export default async function handler(req, res) {
       items.push({ price: process.env.PRICE_ID_PACK_ENTREPRISE, quantity: team });
     }
 
-    // 4) Promo (promotion code optionnel)
+    // 4) Promo code (facultatif)
     let discounts;
     if (promo_code) {
-      const pc = (await stripe.promotionCodes.list({ code: promo_code, active: true, limit: 1 })).data[0];
-      if (pc) discounts = [{ promotion_code: pc.id }];
+      const promo = (await stripe.promotionCodes.list({ code: promo_code, active: true, limit: 1 })).data[0];
+      if (promo) discounts = [{ promotion_code: promo.id }];
     }
 
     // 5) Créer le devis
@@ -54,8 +54,10 @@ export default async function handler(req, res) {
       metadata: { pack: packKey, team_size: String(team), promo_code: promo_code || '' }
     });
 
-    // 6) Finaliser pour avoir l’URL hébergée Stripe
+    // 6) Finaliser pour obtenir l'URL hébergée
     const finalized = await stripe.quotes.finalizeQuote(quote.id);
+
+    // 7) Retourner l'URL pour rediriger l'utilisateur
     res.status(200).json({ url: finalized.url });
   } catch (e) {
     console.error('create-quote error', e);
