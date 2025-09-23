@@ -41,6 +41,18 @@ export default async function handler(req, res) {
     // -----------------------------
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
+const pack = session?.metadata?.pack || '';
+const teamSize = session?.metadata?.team_size || '';
+const promo = session?.metadata?.promo_code || '';
+
+if (session.customer) {
+  await stripe.customers.update(session.customer, {
+    metadata: { pack, team_size: String(teamSize || ''), promo_code: promo },
+    description: `Choix checkout: pack=${pack || '-'}, users=${teamSize || '-'}, promo=${promo || '-'}`
+  });
+}
+
+      const session = event.data.object;
 
       // valeurs saisies sur /checkout.html et passées via /api/create-checkout-session-direct
       const pack = session?.metadata?.pack || '';
