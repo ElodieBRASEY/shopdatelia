@@ -59,8 +59,34 @@
           </div>
         </div>
 
-        <label>Code promo (optionnel)</label>
-        <input id="promo" name="promo_code" type="text" placeholder="DATELIA25" />
+    <label>Code promo (optionnel)</label>
+<div class="row">
+  <div>
+    <input id="promo" name="promo_code" type="text" placeholder="DATELIA25" />
+  </div>
+  <div style="flex:0 0 140px">
+    <button id="applyPromoBtn" type="button" class="cta secondary" style="width:100%">Appliquer</button>
+  </div>
+</div>
+const $applyPromoBtn = document.getElementById('applyPromoBtn');
+async function refreshPromo() {
+  const code = ($promo.value || '').trim();
+  currentDiscount = { type: null, value: 0 };
+  if (!code) { updateSummary(); return; }
+
+  try {
+    const r = await fetch(`/api/promo-lookup?code=${encodeURIComponent(code)}`);
+    const data = await r.json().catch(() => ({}));
+    if (r.ok && data.ok && data.found && data.coupon) {
+      if (data.coupon.percent_off != null) currentDiscount = { type:'percent', value:data.coupon.percent_off };
+      else if (data.coupon.amount_off != null) currentDiscount = { type:'amount', value:(data.coupon.amount_off/100) };
+    }
+  } catch {}
+  updateSummary();
+}
+$applyPromoBtn.addEventListener('click', refreshPromo);
+
+
 
         <p class="hint">
           Aucun débit aujourd’hui — la carte est enregistrée (SCA incluse si nécessaire).
