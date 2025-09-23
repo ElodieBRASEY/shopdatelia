@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Datelia – Paiement (essai 14 jours)</title>
+  <title>Datelia – Démarrer l’essai (14 jours)</title>
   <style>
     :root { --bg:#fafafa; --card:#fff; --ink:#111; --sub:#666; --muted:#9aa0a6; --line:#eee; --accent:#111; --radius:14px; }
     *{box-sizing:border-box}
@@ -64,7 +64,7 @@
           <div>
             <input id="promo" name="promo_code" type="text" placeholder="DATELIA25" />
           </div>
-          <div style="flex:0 0 140px">
+          <div style="flex:0 0 180px">
             <button id="applyPromoBtn" type="button" class="cta secondary" style="width:100%">Appliquer</button>
           </div>
         </div>
@@ -74,7 +74,9 @@
           Les 14 jours commencent après votre rendez-vous d’onboarding.
         </p>
 
-        <button id="payBtn" class="cta" type="submit"> Aller vers l'onboarding automatique (avec CB)</button>
+        <button id="payBtn" class="cta" type="submit">
+          Renseigner les informations de paiement (avec CB)
+        </button>
         <button id="quoteBtn" type="button" class="cta secondary" style="margin-top:10px;">
           Demander un devis (sans CB)
         </button>
@@ -91,9 +93,15 @@
       <div class="summary">
         <div class="line"><span>Utilisateurs (HT)</span><span id="usersLine">—</span></div>
         <div class="line"><span>Pack (HT)</span><span id="packLine">—</span></div>
-        <div class="line"><span>Remise (HT)</span><span id="discountLine">—</span></div>
-        <div class="divider"></div>
 
+        <div class="divider"></div>
+        <div class="line"><span>Sous-total (avant remise) <b>HT</b></span><span id="subtotalLine">—</span></div>
+        <div class="line">
+          <span>Remise (HT) <span id="discountTargetLabel" class="muted"></span></span>
+          <span id="discountLine">—</span>
+        </div>
+
+        <div class="divider"></div>
         <div style="display:flex;justify-content:space-between;align-items:flex-end">
           <div class="footnote">
             Les montants sont affichés en <b>HT</b>.<br />
@@ -115,13 +123,19 @@
 
   <script>
   (() => {
-    // ===== Config prix (HT) =====
+    // ====== PARAMÈTRES TARIFAIRES (HT) ======
     const PRICE_FIRST_49_PER_USER = 90;  // 1..49
     const PRICE_FROM_50_PER_USER  = 20;  // 50+
     const PACK_SURCHARGE = { essentiel: 0, pro: 30, entreprise: 80 }; // €/utilisateur
     const VAT_RATE = 0.20;
 
-    // ===== Helpers / DOM =====
+    // >>> Choisis la cible de la remise promo :
+    // 'users'  = la remise ne s'applique QUE sur la ligne "Utilisateurs"
+    // 'pack'   = la remise ne s'applique QUE sur la ligne "Pack"
+    // 'subtotal' = (optionnel) sur le sous-total (comportement d'avant)
+    const DISCOUNT_TARGET = 'users';
+
+    // ====== HELPERS / DOM ======
     const money = (n) => new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR' }).format(n);
 
     const $email = document.getElementById('email');
@@ -131,6 +145,8 @@
 
     const $usersLine = document.getElementById('usersLine');
     const $packLine = document.getElementById('packLine');
+    const $subtotalLine = document.getElementById('subtotalLine');
+    const $discountTargetLabel = document.getElementById('discountTargetLabel');
     const $discountLine = document.getElementById('discountLine');
     const $totalHTBig = document.getElementById('totalHTBig');
     const $ttcLine = document.getElementById('ttcLine');
@@ -141,7 +157,7 @@
     const $quoteBtn = document.getElementById('quoteBtn');
     const $applyPromoBtn = document.getElementById('applyPromoBtn');
 
-    // État de la promo (pour le récap à droite)
+    // État de la promo (pour l’aperçu)
     let currentDiscount = { type: null, value: 0 }; // {type:'percent'|'amount', value:number}
 
     function clampTeam() {
@@ -169,28 +185,43 @@
       const team = clampTeam();
       const packKey = $pack.value || null;
 
+      // Coûts HT
       const { cost: usersCost, txt: usersTxt } = usersCostHT(team);
       const { cost: packCost,  txt: packTxt  } = packKey ? packCostHT(team, packKey) : { cost:0, txt:'—' };
 
-      let subtotalHT = usersCost + packCost;
+      const subtotalHT = usersCost + packCost;
 
-      // Remise d’aperçu
+      // Base de remise sur un seul poste
+      let baseForDiscount = 0;
+      let targetLabel = '';
+      if (currentDiscount.type) {
+        if (DISCOUNT_TARGET === 'users') { baseForDiscount = usersCost; targetLabel = '(sur utilisateurs)'; }
+        else if (DISCOUNT_TARGET === 'pack') { baseForDiscount = packCost; targetLabel = '(sur pack)'; }
+        else { baseForDiscount = subtotalHT; targetLabel = '(sur sous-total)'; } // fallback
+      }
+
+      // Calcul de la remise
       let discountHT = 0;
-      if (currentDiscount.type === 'percent') discountHT = subtotalHT * (currentDiscount.value / 100);
-      if (currentDiscount.type === 'amount')  discountHT = currentDiscount.value; // en €
+      if (currentDiscount.type === 'percent') {
+        discountHT = baseForDiscount * (currentDiscount.value / 100);
+      } else if (currentDiscount.type === 'amount') {
+        discountHT = Math.min(baseForDiscount, currentDiscount.value); // pas de report sur l’autre ligne
+      }
 
       const totalHT  = Math.max(0, subtotalHT - discountHT);
       const totalTTC = totalHT * (1 + VAT_RATE);
 
+      // Affichages
       $usersLine.textContent = usersTxt;
       $packLine.textContent  = packTxt;
+      $subtotalLine.textContent = money(subtotalHT);
+      $discountTargetLabel.textContent = targetLabel;
       $discountLine.textContent = discountHT > 0 ? '− ' + money(discountHT) : '—';
       $totalHTBig.textContent = money(totalHT);
       $ttcLine.textContent = `Estimation TTC (20%) : ${money(totalTTC)} / mois`;
       $laterText.textContent = `${money(totalHT)} / mois HT`;
     }
 
-    // Vérifier/apply le code promo côté serveur puis recalculer
     async function refreshPromo() {
       const code = ($promo.value || '').trim();
       currentDiscount = { type: null, value: 0 };
@@ -203,7 +234,6 @@
           if (data.coupon.percent_off != null) currentDiscount = { type:'percent', value:data.coupon.percent_off };
           else if (data.coupon.amount_off != null) currentDiscount = { type:'amount', value:(data.coupon.amount_off/100) };
         } else {
-          // code inconnu => aucune remise
           currentDiscount = { type:null, value:0 };
         }
       } catch {
@@ -221,17 +251,17 @@
 
     updateSummary();
 
-    // Soumission CB (setup) → GET vers /api/create-checkout-session-direct
+    // Formulaire CB (setup)
     $form.addEventListener('submit', (e) => {
       const team = clampTeam();
       if (!$email.value || !/.+@.+\..+/.test($email.value)) { e.preventDefault(); alert('Merci d’indiquer un email valide.'); $email.focus(); return; }
       if (!$pack.value) { e.preventDefault(); alert('Merci de sélectionner un pack.'); $pack.focus(); return; }
       if (team < 1) { e.preventDefault(); alert('Au moins 1 utilisateur.'); $team.focus(); return; }
       $payBtn.disabled = true;
-      $payBtn.textContent = 'Redirection vers Stripe…';
+      $payBtn.textContent = 'Ouverture de Stripe…';
     });
 
-    // Devis (sans CB) → POST /api/create-quote
+    // Devis (sans CB)
     $quoteBtn.addEventListener('click', async () => {
       const email = $email.value;
       const team = clampTeam();
@@ -254,7 +284,8 @@
         const data = await resp.json().catch(() => ({}));
 
         if (resp.ok && (data.ok || data.url || data.id)) {
-          if (data.url) window.open(data.url, '_blank'); // page publique si dispo
+          if (data.url) window.open(data.url, '_blank');       // page publique si dispo
+          if (data.dashboardUrl) window.open(data.dashboardUrl, '_blank'); // page Dashboard devis
           window.location.href = 'https://www.datelia.ai/merci';
           return;
         }
