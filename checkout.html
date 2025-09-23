@@ -130,6 +130,7 @@ const € = (n) => new Intl.NumberFormat('fr-FR', { style:'currency', currency:'
   const $promo = document.getElementById('promo');
   const $usersLine = document.getElementById('usersLine');
   const $packLine = document.getElementById('packLine');
+  const $discountLine = document.getElementById('discountLine');
   const $totalHTBig = document.getElementById('totalHTBig');
   const $ttcLine = document.getElementById('ttcLine');
   const $laterText = document.getElementById('laterText');
@@ -201,6 +202,8 @@ const € = (n) => new Intl.NumberFormat('fr-FR', { style:'currency', currency:'
   });
 
   // Bouton "Devis (sans CB) " -> POST /api/create-quote
+ <script>
+  // ...
   $quoteBtn.addEventListener('click', async () => {
     const email = $email.value;
     const team = clampTeam();
@@ -210,26 +213,36 @@ const € = (n) => new Intl.NumberFormat('fr-FR', { style:'currency', currency:'
     if (!/.+@.+\..+/.test(email)) { alert('Email invalide'); return; }
     if (!pack) { alert('Merci de sélectionner un pack'); return; }
 
+    const oldLabel = $quoteBtn.textContent;
+    $quoteBtn.disabled = true;
+    $quoteBtn.textContent = 'Création du devis…';
+
     try {
-      $quoteBtn.disabled = true; $quoteBtn.textContent = 'Création du devis…';
       const resp = await fetch('/api/create-quote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, team_size: team, pack, promo_code: promo || undefined })
       });
-      const data = await resp.json();
+
+      const data = await resp.json().catch(() => ({}));
+
       if (resp.ok && data.url) {
-        window.location.href = data.url; // redirection vers la page devis Stripe
-      } else {
-        alert('Impossible de créer le devis : ' + (data.error || 'inconnu'));
-        $quoteBtn.disabled = false; $quoteBtn.textContent = 'Demander un devis (sans CB)';
+        // 1) ouvrir le devis Stripe dans un nouvel onglet
+        window.open(data.url, '_blank');
+        // 2) rediriger l’onglet actuel vers ta page "merci" (Calendly intégré)
+        window.location.href = 'https://www.datelia.ai/merci';
+        return;
       }
+
+      alert('Impossible de créer le devis : ' + (data.error || `HTTP ${resp.status}`));
     } catch (err) {
-      alert('Erreur réseau: ' + err.message);
-      $quoteBtn.disabled = false; $quoteBtn.textContent = 'Demander un devis (sans CB)';
+      alert('Impossible de créer le devis : ' + err.message);
+    } finally {
+      $quoteBtn.disabled = false;
+      $quoteBtn.textContent = oldLabel;
     }
   });
-})();
+  // ...
 </script>
 </body>
 </html>
