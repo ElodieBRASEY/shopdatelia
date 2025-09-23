@@ -21,17 +21,16 @@ export default async function handler(req, res) {
     let customer = (await stripe.customers.list({ email, limit: 1 })).data[0];
     if (!customer) customer = await stripe.customers.create({ email });
 
-    // Mémoriser les choix (pratique pour l'onboarding)
+    // Mémoriser les choix (utile pour l'onboarding)
     await stripe.customers.update(customer.id, {
       metadata: { pack: packKey, team_size: String(team), promo_code: promo_code || "" },
       description: `Choix devis: pack=${packKey}, users=${team}, promo=${promo_code || "-"}`
     });
 
-    // 2) Lignes du devis à partir des VARIABLES VERCEL
+    // 2) Lignes du devis (IDs depuis Vercel)
     if (!process.env.PRICE_ID_USERS) {
       return res.status(500).json({ error: "PRICE_ID_USERS manquant dans Vercel" });
     }
-
     const items = [{ price: process.env.PRICE_ID_USERS, quantity: team }];
 
     if (packKey === "essentiel") {
@@ -57,19 +56,22 @@ export default async function handler(req, res) {
       if (pc) discounts = [{ promotion_code: pc.id }];
     }
 
-    // 4) Créer le devis
+    // 4) Créer le devis **avec acceptation en ligne** pour obtenir une URL publique
+    const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 14; // expiration du devis dans 14 jours (à adapter)
     const quote = await stripe.quotes.create({
       customer: customer.id,
       line_items: items,
       ...(process.env.TAX_RATE_20_ID ? { default_tax_rates: [process.env.TAX_RATE_20_ID] } : {}),
       discounts,
-      metadata: { pack: packKey, team_size: String(team), promo_code: promo_code || "" }
+      metadata: { pack: packKey, team_size: String(team), promo_code: promo_code || "" },
+      features: { customer_acceptance: { type: "online" } }, // <-- le point clé pour avoir une URL
+      expires_at: expiresAt
     });
 
-    // 5) Finaliser le devis
+    // 5) Finaliser le devis (génère la page d’acceptation)
     const finalized = await stripe.quotes.finalizeQuote(quote.id);
 
-    // 6) Récupérer l'URL partageable (certaines versions d'API ne la renvoient pas immédiatement)
+    // 6) Récupérer l'URL publique de la page de devis
     let publicUrl = finalized?.url || null;
     if (!publicUrl) {
       const again = await stripe.quotes.retrieve(finalized.id);
@@ -77,13 +79,11 @@ export default async function handler(req, res) {
     }
 
     if (!publicUrl) {
-      // Si toujours pas d’URL, on renvoie une erreur explicite (au lieu d’un 200 sans url)
       return res.status(500).json({
-        error: "Devis créé mais aucune URL publique n'a été retournée. Vérifiez que la fonctionnalité Quotes est bien activée sur Stripe."
+        error: "Devis créé mais aucune URL publique n'a été retournée. Vérifiez que l’acceptation en ligne des devis (Quotes) est disponible sur votre compte."
       });
     }
 
-    // 7) OK
     return res.status(200).json({ url: publicUrl, id: finalized.id });
   } catch (e) {
     console.error("create-quote error", e);
