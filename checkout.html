@@ -43,24 +43,11 @@
         <label>Email (utilisé pour Stripe)</label>
         <input id="email" name="email" type="email" required placeholder="vous@entreprise.com" />
 
-<div class="row">
-  <div>
-    <label>Nombre d’utilisateurs</label>
-    <input
-      id="team"
-      name="team_size"
-      type="number"
-      min="1"
-      placeholder="2"   <!-- indicatif -->
-      required
-      inputmode="numeric"
-    />
-  </div>
-  <div>
-    <!-- … ton select “Pack” ici … -->
-  </div>
-</div>
-
+        <div class="row">
+          <div>
+            <label>Nombre d’utilisateurs</label>
+            <input id="team" name="team_size" type="number" min="1" placeholder="2" inputmode="numeric" required />
+          </div>
           <div>
             <label>Pack (obligatoire)</label>
             <select id="pack" name="pack" required>
@@ -142,10 +129,7 @@
     const PACK_SURCHARGE = { essentiel: 0, pro: 30, entreprise: 80 }; // €/utilisateur
     const VAT_RATE = 0.20;
 
-    // >>> Choisis la cible de la remise promo :
-    // 'users'  = la remise ne s'applique QUE sur la ligne "Utilisateurs"
-    // 'pack'   = la remise ne s'applique QUE sur la ligne "Pack"
-    // 'subtotal' = (optionnel) sur le sous-total (comportement d'avant)
+    // Cible de la remise promo : 'users' | 'pack' | 'subtotal'
     const DISCOUNT_TARGET = 'users';
 
     // ====== HELPERS / DOM ======
@@ -173,10 +157,15 @@
     // État de la promo (pour l’aperçu)
     let currentDiscount = { type: null, value: 0 }; // {type:'percent'|'amount', value:number}
 
-    function clampTeam() {
-      const t = Math.max(1, parseInt($team.value || '1', 10));
-      $team.value = t;
-      return t;
+    // ---- NOUVEAU : ne JAMAIS pré-remplir l'input ----
+    function teamForPreview() {
+      const v = parseInt($team.value, 10);
+      return Number.isFinite(v) ? Math.max(1, v) : 2; // 2 uniquement pour l'aperçu
+    }
+    function readTeamOrThrow() {
+      const v = parseInt($team.value, 10);
+      if (!Number.isFinite(v)) throw new Error("Merci d’indiquer le nombre d’utilisateurs.");
+      return Math.max(1, v);
     }
 
     function usersCostHT(team) {
@@ -195,10 +184,9 @@
     }
 
     function updateSummary() {
-      const team = clampTeam();
+      const team = teamForPreview();             // <-- utilise 2 si vide
       const packKey = $pack.value || null;
 
-      // Coûts HT
       const { cost: usersCost, txt: usersTxt } = usersCostHT(team);
       const { cost: packCost,  txt: packTxt  } = packKey ? packCostHT(team, packKey) : { cost:0, txt:'—' };
 
@@ -210,7 +198,7 @@
       if (currentDiscount.type) {
         if (DISCOUNT_TARGET === 'users') { baseForDiscount = usersCost; targetLabel = '(sur utilisateurs)'; }
         else if (DISCOUNT_TARGET === 'pack') { baseForDiscount = packCost; targetLabel = '(sur pack)'; }
-        else { baseForDiscount = subtotalHT; targetLabel = '(sur sous-total)'; } // fallback
+        else { baseForDiscount = subtotalHT; targetLabel = '(sur sous-total)'; }
       }
 
       // Calcul de la remise
@@ -218,7 +206,7 @@
       if (currentDiscount.type === 'percent') {
         discountHT = baseForDiscount * (currentDiscount.value / 100);
       } else if (currentDiscount.type === 'amount') {
-        discountHT = Math.min(baseForDiscount, currentDiscount.value); // pas de report sur l’autre ligne
+        discountHT = Math.min(baseForDiscount, currentDiscount.value);
       }
 
       const totalHT  = Math.max(0, subtotalHT - discountHT);
@@ -246,38 +234,37 @@
         if (r.ok && data.ok && data.found && data.coupon) {
           if (data.coupon.percent_off != null) currentDiscount = { type:'percent', value:data.coupon.percent_off };
           else if (data.coupon.amount_off != null) currentDiscount = { type:'amount', value:(data.coupon.amount_off/100) };
-        } else {
-          currentDiscount = { type:null, value:0 };
         }
-      } catch {
-        currentDiscount = { type:null, value:0 };
-      }
+      } catch {}
       updateSummary();
     }
 
     // Listeners UI
-    ['input','change'].forEach(evt => {
-      $team.addEventListener(evt, updateSummary);
-      $pack.addEventListener(evt, updateSummary);
-    });
+    $team.addEventListener('input', updateSummary);
+    $pack.addEventListener('change', updateSummary);
     $applyPromoBtn.addEventListener('click', refreshPromo);
 
-    updateSummary();
+    updateSummary(); // premier rendu
 
     // Formulaire CB (setup)
     $form.addEventListener('submit', (e) => {
-      const team = clampTeam();
-      if (!$email.value || !/.+@.+\..+/.test($email.value)) { e.preventDefault(); alert('Merci d’indiquer un email valide.'); $email.focus(); return; }
-      if (!$pack.value) { e.preventDefault(); alert('Merci de sélectionner un pack.'); $pack.focus(); return; }
-      if (team < 1) { e.preventDefault(); alert('Au moins 1 utilisateur.'); $team.focus(); return; }
-      $payBtn.disabled = true;
-      $payBtn.textContent = 'Ouverture de Stripe…';
+      try {
+        const team = readTeamOrThrow(); // exige une saisie réelle
+        if (!$email.value || !/.+@.+\..+/.test($email.value)) { e.preventDefault(); alert('Merci d’indiquer un email valide.'); $email.focus(); return; }
+        if (!$pack.value) { e.preventDefault(); alert('Merci de sélectionner un pack.'); $pack.focus(); return; }
+        $payBtn.disabled = true;
+        $payBtn.textContent = 'Ouverture de Stripe…';
+      } catch (err) {
+        e.preventDefault();
+        alert(err.message);
+      }
     });
 
     // Devis (sans CB)
     $quoteBtn.addEventListener('click', async () => {
       const email = $email.value;
-      const team = clampTeam();
+      let team;
+      try { team = readTeamOrThrow(); } catch (err) { alert(err.message); return; }
       const pack = $pack.value;
       const promo = ($promo.value || '').trim();
 
